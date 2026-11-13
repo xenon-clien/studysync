@@ -19,6 +19,7 @@ build/
 
 # Logs & temp files
 *.log
+*.zip
 logs/
 backend/logs/
 npm-debug.log*
