@@ -1,4 +1,25 @@
-const API_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3001/api`;
+const resolveApiUrl = () => {
+  // 1. Explicit environment variable set at build/deploy time (e.g. in Vercel Project Settings)
+  if (import.meta.env.VITE_API_URL) {
+    const raw = import.meta.env.VITE_API_URL.trim().replace(/\/+$/, '');
+    return raw.endsWith('/api') ? raw : `${raw}/api`;
+  }
+
+  // 2. Client-side browser fallback
+  if (typeof window !== 'undefined') {
+    const { hostname, protocol } = window.location;
+    // Local development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:3001/api`;
+    }
+    // Deployed on Vercel / cloud without VITE_API_URL
+    return '/api';
+  }
+
+  return 'http://localhost:3001/api';
+};
+
+const API_URL = resolveApiUrl();
 
 async function parseResponse(response) {
   const text = await response.text();
@@ -22,11 +43,25 @@ export const apiFetch = async (endpoint, options = {}, _retried = false) => {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    credentials: 'include',
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      credentials: 'include',
+      ...options,
+      headers,
+    });
+  } catch (netErr) {
+    if (netErr?.name === 'TypeError' || (netErr?.message && netErr.message.toLowerCase().includes('fetch'))) {
+      const isCloud = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      const msg = isCloud
+        ? `Backend connect nahi ho pa raha (${API_URL}). Kripya Vercel frontend me VITE_API_URL set karein.`
+        : `Could not connect to backend server at ${API_URL}. Please ensure backend is running.`;
+      const err = new Error(msg);
+      err.status = 503;
+      throw err;
+    }
+    throw netErr;
+  }
 
   if (response.status === 401 && !_retried && !endpoint.startsWith('/auth/')) {
     const refreshToken = localStorage.getItem('refreshToken');

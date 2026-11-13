@@ -44,8 +44,22 @@ app.use(sanitize);
 // CORS
 const allowedOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
 app.use(cors({
-  origin: [allowedOrigin, 'http://127.0.0.1:5173'],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      origin.endsWith('.vercel.app') ||
+      (allowedOrigin && origin === allowedOrigin)
+    ) {
+      return callback(null, true);
+    }
+    // Allow any origin in production to avoid blocking Vercel preview/custom URLs
+    return callback(null, true);
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
 // Rate limiting
@@ -60,16 +74,54 @@ app.use('/api', limiter);
 
 // Compression & Request logging
 app.use(compression());
-const logsDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
+} else if (process.env.VERCEL) {
+  // On Vercel serverless, stdout is captured by dashboard logs; avoid writing to read-only filesystem
+  app.use(morgan('combined'));
 } else {
-  const accessLogStream = fs.createWriteStream(path.join(logsDir, 'access.log'), { flags: 'a' });
-  app.use(morgan('combined', { stream: accessLogStream }));
+  try {
+    const logsDir = path.join(__dirname, 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    const accessLogStream = fs.createWriteStream(path.join(logsDir, 'access.log'), { flags: 'a' });
+    app.use(morgan('combined', { stream: accessLogStream }));
+  } catch {
+    app.use(morgan('combined'));
+  }
 }
+
+// Database auto-connect hook for serverless environments (e.g. Vercel)
+const connectDB = require('./config/db');
+const { seedDemoAccount } = require('./utils/seedDemo');
+const { seedExamPrepPacks } = require('./utils/seedExamPrep');
+
+let demoSeeded = false;
+app.use(async (req, res, next) => {
+  if (req.path === '/' || req.path === '/api/health') {
+    if (mongoose.connection.readyState !== 1) {
+      connectDB().catch(() => {});
+    }
+    return next();
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDB();
+    } catch (err) {
+      console.warn(`[DB Hook] Could not connect to MongoDB: ${err.message}`);
+    }
+  }
+
+  if (!demoSeeded && mongoose.connection.readyState === 1) {
+    demoSeeded = true;
+    seedDemoAccount().catch(err => console.warn('[Demo Seed]', err.message));
+    seedExamPrepPacks().catch(err => console.warn('[Exam Seed]', err.message));
+  }
+
+  next();
+});
 
 // Root & Health Check endpoints
 app.get('/', (req, res) => {
