@@ -71,9 +71,13 @@ export function defaultExams(subjects) {
 
 export function defaultAssignments(subjects) {
   return [
-    { id: uid('asg'), title: 'Build a Todo App with Context API', subjectId: subjects[2]?.id || '', dueDate: addDays(4), status: 'Pending', priority: 'High' },
-    { id: uid('asg'), title: 'Implement Merge Sort & Quick Sort', subjectId: subjects[1]?.id || '', dueDate: addDays(2), status: 'Pending', priority: 'Medium' },
-    { id: uid('asg'), title: 'Write notes on Event Delegation', subjectId: subjects[0]?.id || '', dueDate: addDays(-2), status: 'Completed', priority: 'Low' },
+    { id: uid('asg'), title: 'Implement Singly & Doubly Linked List in C++', unit: 'Unit 1', subjectId: subjects[1]?.id || '', dueDate: addDays(2), status: 'Pending', priority: 'High' },
+    { id: uid('asg'), title: 'QuickSort vs MergeSort Benchmark & Analysis', unit: 'Unit 2', subjectId: subjects[1]?.id || '', dueDate: addDays(4), status: 'Pending', priority: 'Medium' },
+    { id: uid('asg'), title: 'Construct AVL Tree with Step-by-Step Rotations', unit: 'Unit 3', subjectId: subjects[1]?.id || '', dueDate: addDays(6), status: 'Pending', priority: 'High' },
+    { id: uid('asg'), title: 'B+ Tree Splitting & Insertion Simulation', unit: 'Unit 4', subjectId: subjects[1]?.id || '', dueDate: addDays(8), status: 'Pending', priority: 'Medium' },
+    { id: uid('asg'), title: 'Dijkstra Shortest Path Lab Implementation', unit: 'Unit 5', subjectId: subjects[1]?.id || '', dueDate: addDays(10), status: 'Pending', priority: 'High' },
+    { id: uid('asg'), title: 'Hash Collision Resolution (Chaining vs Probing)', unit: 'Unit 6', subjectId: subjects[1]?.id || '', dueDate: addDays(12), status: 'Completed', priority: 'Low' },
+    { id: uid('asg'), title: 'Build a Todo App with Context API', unit: 'Unit 3', subjectId: subjects[2]?.id || '', dueDate: addDays(5), status: 'Pending', priority: 'High' },
   ];
 }
 

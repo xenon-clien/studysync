@@ -9,6 +9,11 @@ const AssignmentSchema = new mongoose.Schema({
     trim: true,
     maxlength: [200, 'Title cannot exceed 200 characters'],
   },
+  unit: {
+    type: String,
+    default: 'General',
+    trim: true,
+  },
   subjectId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Subject',
