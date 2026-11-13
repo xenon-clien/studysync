@@ -23,6 +23,137 @@ function normalizeCourseMatch(raw) {
   return raw || '';
 }
 
+const DEMO_FALLBACK_META = {
+  universities: ['CT University (Ludhiana)', 'AKTU', 'IKGPTU', 'All Universities'],
+  courses: ['B.Tech CSE', 'BCA', 'MCA', 'B.Sc CS', 'ETT / D.El.Ed'],
+  semesters: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8'],
+  examTypes: ['End Term Test (ETT)', 'Mid Term (MST)', 'Semester Final'],
+  subjects: ['Data Structures & Algorithms', 'Discrete Structures & Graph Theory', 'Database Management Systems'],
+  subjectCatalog: [
+    { course: 'B.Tech CSE', semester: 'Sem 3', subject: 'Data Structures & Algorithms' },
+    { course: 'B.Tech CSE', semester: 'Sem 3', subject: 'Discrete Structures & Graph Theory' },
+    { course: 'B.Tech CSE', semester: 'Sem 4', subject: 'Database Management Systems' },
+  ],
+};
+
+const DEMO_FALLBACK_PACKS = [
+  {
+    id: 'demo_pack_dsa',
+    university: 'CT University / AKTU / IKGPTU',
+    course: 'B.Tech CSE',
+    semester: 'Sem 3',
+    subject: 'Data Structures & Algorithms',
+    examType: 'End Term Test (ETT)',
+    examPattern: {
+      totalMarks: 60,
+      passMarks: 24,
+      structure: 'Section A (10x1M=10M), Section B (5x2M=10M), Section C (4x5M=20M), Section D (2x10M=20M)',
+      highWeightageTopics: [
+        'AVL Tree Balance Rotations (LL, RR, LR, RL)',
+        'B+ Tree Splitting & Insertion (Order 3/4)',
+        'Dijkstra Shortest Path & Prim MST Algorithm',
+        'Quick Sort & Merge Sort Recurrence & Proofs',
+      ],
+    },
+    crashSummary: {
+      tagline: 'Zero-to-Exam DSA Crash Pack: AVL Rotations + B+ Tree + Dijkstra = 50+/60!',
+      passPlan: '1) Unit 1: Asymptotic Big-O proofs. 2) Unit 3: AVL Rotations step-by-step. 3) Unit 4: B+ Tree insertions. 4) Unit 5: Dijkstra shortest path algorithm.',
+      units: [
+        {
+          unit: 'Unit 1',
+          title: 'Asymptotic Analysis & Linear Structures',
+          analogy: 'Stack is like a pile of plates (LIFO); Queue is like a movie ticket line (FIFO).',
+          simpleExplanation: '• Time Complexity: Big-O represents worst case upper bound.\n• Array vs Linked List: Arrays have O(1) random access but O(n) insertion. Linked lists have O(1) pointer inserts once located.\n• Circular Queue eliminates space waste in linear queue using (rear + 1) % size.',
+          keyFormulasOrKeywords: ['Big-O Upper Bound', 'Stack LIFO (push/pop)', 'Queue FIFO (enqueue/dequeue)', 'Circular Queue: (rear+1)%size'],
+          diagram: 'linked-list',
+        },
+        {
+          unit: 'Unit 2',
+          title: 'Sorting Algorithms & Divide and Conquer',
+          analogy: 'Merge Sort cuts the deck in half repeatedly, then merges sorted piles like a zip fastener.',
+          simpleExplanation: '• Quick Sort: Pick pivot, partition into smaller/larger elements. Average O(n log n), worst case O(n^2) when array already sorted.\n• Merge Sort: Stable sorting algorithm with guaranteed O(n log n) in all cases using extra O(n) space.',
+          keyFormulasOrKeywords: ['QuickSort T(n)=2T(n/2)+O(n)', 'MergeSort O(n log n)', 'Divide and Conquer', 'Stable Sorting'],
+          diagram: 'generic',
+        },
+        {
+          unit: 'Unit 3',
+          title: 'Binary Search Trees & AVL Balance Rotations',
+          analogy: 'An AVL tree is like a self-balancing weighing scale: if one side tilts by more than 1 kg, it auto-rotates back to level.',
+          simpleExplanation: '• Balance Factor: BF(node) = Height(Left Subtree) - Height(Right Subtree). Valid BF in AVL: {-1, 0, +1}.\n• LL Imbalance -> Single Right Rotation.\n• RR Imbalance -> Single Left Rotation.\n• LR Imbalance -> Double Rotation (Left on child, Right on root).\n• RL Imbalance -> Double Rotation (Right on child, Left on root).',
+          keyFormulasOrKeywords: ['BF = H(left) - H(right)', 'Valid: {-1, 0, 1}', 'LL -> Right Rotate', 'RR -> Left Rotate', 'LR -> Left-Right', 'RL -> Right-Left'],
+          diagram: 'avl_rotation',
+        },
+        {
+          unit: 'Unit 4',
+          title: 'B-Trees & B+ Tree Multi-Way Search',
+          analogy: 'A B+ Tree is like a library index: inner cards only guide you to shelves, while all actual books and links sit on the ground floor (leaf nodes).',
+          simpleExplanation: '• In a B+ Tree, all data records are stored strictly in the leaf nodes. Leaves are linked sequentially for rapid range queries.\n• Internal nodes only contain indexing router keys.\n• Splitting: When a leaf exceeds capacity M-1, it splits into two halves and copies the median key up to the parent.',
+          keyFormulasOrKeywords: ['Leaves linked via pointers', 'Internal nodes = Router keys', 'Order M node has <= M children', 'Splitting when full'],
+          diagram: 'bplus_tree',
+        },
+        {
+          unit: 'Unit 5',
+          title: 'Graphs, BFS/DFS & Dijkstra Algorithm',
+          analogy: 'BFS is like dropping a pebble in water (ripples expand level by level); DFS is like exploring a maze by walking as deep as possible before backtracking.',
+          simpleExplanation: '• BFS uses a Queue (Breadth level-by-level, O(V+E)).\n• DFS uses a Stack / Recursion (Depth first, O(V+E)).\n• Dijkstra: Greedy algorithm for single-source shortest paths on non-negative weighted graphs using Min-Heap priority queue.',
+          keyFormulasOrKeywords: ['BFS -> Queue', 'DFS -> Stack', 'Dijkstra: dist[v] = min(dist[v], dist[u] + weight(u,v))', 'Time: O((V+E) log V)'],
+          diagram: 'osi_stack',
+        },
+        {
+          unit: 'Unit 6',
+          title: 'Hashing & Collision Resolution',
+          analogy: 'Hash function is like a hotel room allocator: maps your ID number directly to a room key.',
+          simpleExplanation: '• Hash Collision: When two different keys produce the exact same index h(k1) == h(k2).\n• Separate Chaining: Each bucket holds a linked list of collided keys.\n• Open Addressing: Linear Probing (h(k)+i)%m, Quadratic Probing (h(k)+i^2)%m, Double Hashing.',
+          keyFormulasOrKeywords: ['Load Factor alpha = n/m', 'Chaining -> Linked Lists', 'Linear Probing: (h(k)+i)%m', 'O(1) average lookup'],
+          diagram: 'generic',
+        },
+      ],
+    },
+    pyqs: [
+      {
+        id: 'q_dsa_1',
+        year: 2025,
+        semester: 'Sem 3',
+        marks: 10,
+        frequency: 'Sure Shot ETT',
+        isImportant: true,
+        unit: 'Unit 3',
+        question: 'Explain AVL tree balance factors. Construct an AVL tree by inserting the following sequence: 10, 20, 30, 40, 50, 25. Show rotations clearly.',
+        answer: '1. Insert 10, 20: Tree is balanced.\n2. Insert 30: Node 10 has BF = -2 (Right-Right imbalance). Perform Left Rotation on 10 -> 20 becomes root with children 10 and 30.\n3. Insert 40: Balanced.\n4. Insert 50: Node 30 has BF = -2 (RR imbalance). Left rotate 30 -> 40 becomes parent of 30 and 50.\n5. Insert 25: Node 20 has RL imbalance. Right rotate around 40, then Left rotate around 20 -> tree is perfectly balanced!',
+      },
+      {
+        id: 'q_dsa_2',
+        year: 2024,
+        semester: 'Sem 3',
+        marks: 10,
+        frequency: 'Repeated 3x',
+        isImportant: true,
+        unit: 'Unit 4',
+        question: 'What is a B+ tree? Differentiate between B-Tree and B+ Tree. Why are B+ trees preferred in database indexing?',
+        answer: 'Differences:\n1. Data storage: In B-Tree, keys and satellite data records are stored in both internal and leaf nodes. In B+ Tree, data records exist exclusively in leaf nodes; internal nodes only store router keys.\n2. Leaf node linking: In B+ Tree, all leaf nodes are linked together in a doubly linked list, allowing fast O(1) range queries and sequential scans. B-Tree requires expensive in-order tree traversal.\n3. Height: B+ tree has higher fan-out and lower height, resulting in fewer disk I/O operations.',
+      },
+      {
+        id: 'q_dsa_3',
+        year: 2025,
+        semester: 'Sem 3',
+        marks: 5,
+        frequency: 'Important',
+        isImportant: true,
+        unit: 'Unit 5',
+        question: 'Write Dijkstra algorithm for single source shortest path. Why does it fail for negative edge weights?',
+        answer: 'Algorithm steps:\n1. Initialize dist[src] = 0 and dist[v] = infinity for all other vertices.\n2. Add all vertices to a Priority Queue.\n3. Extract min-distance vertex u. For each neighbor v of u, relax the edge: if dist[u] + weight(u,v) < dist[v], update dist[v] = dist[u] + weight(u,v).\n4. Repeat until priority queue is empty.\n\nNegative weights fail because Dijkstra greedily assumes that once a vertex is marked visited, its shortest distance cannot be decreased. Negative edges violate this greedy property.',
+      },
+    ],
+    notes: [
+      {
+        id: 'n_dsa_1',
+        title: 'Master Theorem for Divide & Conquer Recurrences',
+        content: 'For T(n) = a*T(n/b) + f(n):\nCompare f(n) with n^(log_b(a)):\n- Case 1: If f(n) < n^(log_b(a)), T(n) = Theta(n^(log_b(a))).\n- Case 2: If f(n) == n^(log_b(a)), T(n) = Theta(n^(log_b(a)) * log n).\n- Case 3: If f(n) > n^(log_b(a)), T(n) = Theta(f(n)).',
+      },
+    ],
+  },
+];
+
 export default function ExamPrepPage() {
   const { addNote, addTask, subjects } = useStudy();
 
@@ -95,7 +226,8 @@ export default function ExamPrepPage() {
         }));
       }
     } catch (e) {
-      console.error('Failed to load Exam Prep metadata', e);
+      console.warn('Failed to load Exam Prep metadata, using demo metadata', e);
+      setMeta(DEMO_FALLBACK_META);
     }
   }, []);
 
@@ -117,12 +249,20 @@ export default function ExamPrepPage() {
 
       const res = await apiFetch(`/examprep?${params.toString()}`);
       const list = res.data || [];
-      setPacks(list);
-      setMatchMode(res.matchMode || 'exact');
-      const pickFirst = activeFilters.subject.trim() || activeFilters.search.trim();
-      setSelectedPackId((prev) => (!pickFirst && list.some((p) => p.id === prev) ? prev : (list[0]?.id || '')));
+      if (list.length === 0) {
+        setPacks(DEMO_FALLBACK_PACKS);
+        setSelectedPackId(DEMO_FALLBACK_PACKS[0]?.id || '');
+      } else {
+        setPacks(list);
+        setMatchMode(res.matchMode || 'exact');
+        const pickFirst = activeFilters.subject.trim() || activeFilters.search.trim();
+        setSelectedPackId((prev) => (!pickFirst && list.some((p) => p.id === prev) ? prev : (list[0]?.id || '')));
+      }
     } catch (e) {
-      console.error('Failed to fetch study packs', e);
+      console.warn('Failed to fetch study packs, falling back to demo pack', e);
+      setPacks(DEMO_FALLBACK_PACKS);
+      setMatchMode('demo');
+      setSelectedPackId(DEMO_FALLBACK_PACKS[0]?.id || '');
     } finally {
       setLoading(false);
     }
@@ -155,8 +295,13 @@ export default function ExamPrepPage() {
         setFilters(initialFilters);
         await fetchPacks(initialFilters);
       } catch (e) {
-        console.error('Failed to initialize Exam Prep Hub', e);
-        if (mounted) setLoading(false);
+        console.warn('Failed to initialize Exam Prep Hub from backend, using demo data', e);
+        if (mounted) {
+          setMeta(DEMO_FALLBACK_META);
+          setPacks(DEMO_FALLBACK_PACKS);
+          setSelectedPackId(DEMO_FALLBACK_PACKS[0]?.id || '');
+          setLoading(false);
+        }
       }
     })();
     return () => { mounted = false; };

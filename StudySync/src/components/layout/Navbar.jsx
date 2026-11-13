@@ -3,7 +3,7 @@ import { useStudy } from '../../context/StudyContext';
 import { LuMenu, LuSun, LuMoon, LuBell, LuFlame } from 'react-icons/lu';
 
 export default function Navbar({ title, subtitle }) {
-  const { darkMode, setDarkMode, notifications, markNotifRead, sidebarOpen, setSidebarOpen, streak } = useStudy();
+  const { darkMode, setDarkMode, notifications, markNotifRead, sidebarOpen, setSidebarOpen, streak, isDemoMode } = useStudy();
   const [showNotif, setShowNotif] = useState(false);
   const unread = notifications.filter(n => !n.read).length;
 
@@ -24,10 +24,17 @@ export default function Navbar({ title, subtitle }) {
       </div>
 
       <div className="flex items-center gap-2" style={{ marginLeft: 'auto' }}>
-        <div className="flex items-center gap-1.5 pill pill-sage" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600 }} title="Backend API & MongoDB Connected on Port 3001">
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-          <span>MongoDB Live</span>
-        </div>
+        {isDemoMode ? (
+          <div className="flex items-center gap-1.5 pill pill-amber" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600 }} title="Running in Local Demo Mode (LocalStorage)">
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} />
+            <span>Demo Mode</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 pill pill-sage" style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600 }} title="Backend API & MongoDB Connected">
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+            <span>MongoDB Live</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 pill pill-amber" style={{ padding: '6px 12px' }}>
           <LuFlame size={13} /> {streak.current} days

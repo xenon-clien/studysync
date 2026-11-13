@@ -1,6 +1,17 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { loadData, saveData, uid } from '../utils/storage';
 import { apiFetch } from '../utils/api';
+import {
+  defaultSubjects,
+  defaultTasks,
+  defaultSchedule,
+  defaultGoals,
+  defaultNotes,
+  defaultExams,
+  defaultAssignments,
+  defaultPomodoroStats,
+  defaultStreak,
+} from '../utils/seedData';
 
 const StudyContext = createContext();
 
@@ -8,6 +19,33 @@ const normalizeDoc = (doc) => {
   if (!doc || typeof doc !== 'object') return doc;
   return { ...doc, id: doc.id || doc._id };
 };
+
+const isDemoToken = (tok) => !tok || tok.startsWith('demo_') || tok.startsWith('mock_');
+
+function getInitialLocalEntities() {
+  const subs = loadData('subjects', null) || defaultSubjects();
+  const tsks = loadData('tasks', null) || defaultTasks(subs);
+  const sch = loadData('schedule', null) || defaultSchedule();
+  const gls = loadData('goals', null) || defaultGoals(subs);
+  const nts = loadData('notes', null) || defaultNotes();
+  const exm = loadData('exams', null) || defaultExams(subs);
+  const asg = loadData('assignments', null) || defaultAssignments(subs);
+  const pom = loadData('pomodoroStats', null) || defaultPomodoroStats();
+  const str = loadData('streak', null) || defaultStreak();
+  return { subs, tsks, sch, gls, nts, exm, asg, pom, str };
+}
+
+function saveLocalEntities({ subs, tsks, sch, gls, nts, exm, asg, pom, str }) {
+  if (subs) saveData('subjects', subs);
+  if (tsks) saveData('tasks', tsks);
+  if (sch) saveData('schedule', sch);
+  if (gls) saveData('goals', gls);
+  if (nts) saveData('notes', nts);
+  if (exm) saveData('exams', exm);
+  if (asg) saveData('assignments', asg);
+  if (pom) saveData('pomodoroStats', pom);
+  if (str) saveData('streak', str);
+}
 
 export function StudyProvider({ children }) {
   // ---- Auth ----
@@ -60,12 +98,32 @@ export function StudyProvider({ children }) {
     toastTimerRef.current = setTimeout(() => setToast(null), 2400);
   }, []);
 
+  const populateFromLocalStorage = useCallback(() => {
+    const local = getInitialLocalEntities();
+    setSubjects(local.subs);
+    setTasks(local.tsks);
+    setSchedule(local.sch);
+    setGoals(local.gls);
+    setNotes(local.nts);
+    setExams(local.exm);
+    setAssignments(local.asg);
+    setPomodoroStats(local.pom);
+    setStreak(local.str);
+    saveLocalEntities(local);
+  }, []);
+
   useEffect(() => {
     saveData('readNotifs', readNotifIds);
   }, [readNotifIds]);
 
   const refreshAllData = useCallback(async () => {
     if (!token) return;
+
+    if (isDemoToken(token)) {
+      populateFromLocalStorage();
+      return;
+    }
+
     try {
       const [meRes, subRes, taskRes, schRes, goalRes, noteRes, examRes, asgRes, pomRes, strRes] = await Promise.all([
         apiFetch('/auth/me'),
@@ -94,16 +152,23 @@ export function StudyProvider({ children }) {
         setUser(null);
         setToken(null);
         setRefreshToken(null);
+      } else if (e.status === 405 || e.status === 503 || (e.message && e.message.includes('Backend'))) {
+        console.warn('Backend unavailable, falling back to local demo state.');
+        populateFromLocalStorage();
       } else {
         console.error('Error fetching data', e);
       }
     }
-  }, [token]);
+  }, [token, populateFromLocalStorage]);
 
   // Load data on user login / mount
   useEffect(() => {
     if (user && token) {
-      refreshAllData();
+      if (isDemoToken(token)) {
+        populateFromLocalStorage();
+      } else {
+        refreshAllData();
+      }
     } else {
       setSubjects([]);
       setTasks([]);
@@ -115,7 +180,7 @@ export function StudyProvider({ children }) {
       setPomodoroStats({ todaySessions: 0, totalFocusMinutes: 0, sessionLog: [] });
       setStreak({ current: 0, longest: 0, lastStudyDate: null });
     }
-  }, [user?.id, token, refreshAllData]);
+  }, [user?.id, token, refreshAllData, populateFromLocalStorage]);
 
   // Build real notifications from user's live DB records
   const notifications = (() => {
@@ -163,23 +228,81 @@ export function StudyProvider({ children }) {
   };
 
   const register = async (name, email, password) => {
-    const res = await apiFetch('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
-    });
-    return applyAuthSession(res);
+    try {
+      const res = await apiFetch('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+      });
+      return applyAuthSession(res);
+    } catch (err) {
+      const isCloudOrMissingBackend =
+        err.status === 405 ||
+        err.status === 503 ||
+        err.status === 404 ||
+        (err.message && (err.message.includes('Backend') || err.message.includes('405') || err.message.includes('Method Not Allowed')));
+
+      if (isCloudOrMissingBackend) {
+        const localUser = {
+          id: uid('usr'),
+          name: name.trim() || 'Student',
+          email: email.trim(),
+          role: 'student',
+        };
+        const demoToken = `demo_token_${Date.now()}`;
+        setToken(demoToken);
+        setUser(localUser);
+        saveData('token', demoToken);
+        saveData('user', localUser);
+        localStorage.setItem('token', demoToken);
+
+        populateFromLocalStorage();
+        showToast('Account created in Demo Mode');
+        return localUser;
+      }
+      throw err;
+    }
   };
 
   const login = async (email, password) => {
-    const res = await apiFetch('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email: email.trim(), password }),
-    });
-    return applyAuthSession(res);
+    try {
+      const res = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      return applyAuthSession(res);
+    } catch (err) {
+      const isCloudOrMissingBackend =
+        err.status === 405 ||
+        err.status === 503 ||
+        err.status === 404 ||
+        (err.message && (err.message.includes('Backend') || err.message.includes('405') || err.message.includes('Method Not Allowed')));
+
+      if (isCloudOrMissingBackend || email.trim().toLowerCase() === 'demo@studysync.app') {
+        const demoUser = {
+          id: 'demo_user_1',
+          name: email.trim().toLowerCase() === 'demo@studysync.app' ? 'Demo Student' : (email.split('@')[0] || 'Student'),
+          email: email.trim(),
+          role: 'student',
+        };
+        const demoToken = `demo_token_${Date.now()}`;
+        setToken(demoToken);
+        setUser(demoUser);
+        saveData('token', demoToken);
+        saveData('user', demoUser);
+        localStorage.setItem('token', demoToken);
+
+        populateFromLocalStorage();
+        showToast('Signed in to Demo Mode (Local Storage)');
+        return demoUser;
+      }
+      throw err;
+    }
   };
 
   const logout = async () => {
-    try { await apiFetch('/auth/logout', { method: 'POST' }); } catch {}
+    if (!isDemoToken(token)) {
+      try { await apiFetch('/auth/logout', { method: 'POST' }); } catch {}
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     saveData('user', null);
@@ -190,6 +313,13 @@ export function StudyProvider({ children }) {
   };
 
   const updateProfile = async (profileData) => {
+    if (isDemoToken(token)) {
+      const updated = { ...user, ...profileData };
+      setUser(updated);
+      saveData('user', updated);
+      showToast('Profile updated locally');
+      return updated;
+    }
     const res = await apiFetch('/auth/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),
@@ -200,6 +330,9 @@ export function StudyProvider({ children }) {
   };
 
   const forgotPassword = async (email) => {
+    if (isDemoToken(token)) {
+      return { success: true, message: 'Password reset instructions sent (Demo mode).' };
+    }
     return apiFetch('/auth/forgotpassword', {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -207,6 +340,9 @@ export function StudyProvider({ children }) {
   };
 
   const resetPassword = async (resetToken, password) => {
+    if (isDemoToken(token)) {
+      return { success: true, message: 'Password updated (Demo mode).' };
+    }
     const res = await apiFetch(`/auth/resetpassword/${resetToken}`, {
       method: 'PUT',
       body: JSON.stringify({ password }),
@@ -221,43 +357,67 @@ export function StudyProvider({ children }) {
   const updateTimersRef = useRef({});
   const pendingUpdatesRef = useRef({});
 
-  const optimisticAdd = (endpoint, setState, transformList) => async (data) => {
-    const tempId = uid('temp');
+  const optimisticAdd = (endpoint, setState, transformList, storageKey) => async (data) => {
+    const tempId = uid('item');
+    const newItem = { _id: tempId, id: tempId, ...data };
     setState(prev => {
-      const next = [...prev, { _id: tempId, id: tempId, ...data }];
+      const next = [...prev, newItem];
+      if (storageKey) saveData(storageKey, next);
       return transformList ? transformList(next) : next;
     });
+
+    if (isDemoToken(token)) {
+      showToast('Saved locally');
+      return newItem;
+    }
+
     try {
       const res = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(data) });
       const created = normalizeDoc(res.data);
       setState(prev => {
         const next = prev.map(item => (item._id === tempId || item.id === tempId) ? created : item);
+        if (storageKey) saveData(storageKey, next);
         return transformList ? transformList(next) : next;
       });
       showToast('Saved to MongoDB');
       return created;
     } catch (e) {
+      if (e.status === 405 || e.status === 503 || e.status === 404) {
+        showToast('Saved locally (Offline)');
+        return newItem;
+      }
       setState(prev => prev.filter(item => item._id !== tempId && item.id !== tempId));
       console.error(e);
     }
   };
 
-  const optimisticUpdate = (endpoint, setState, { debounceMs = 0 } = {}) => async (id, data) => {
+  const optimisticUpdate = (endpoint, setState, { debounceMs = 0, storageKey } = {}) => async (id, data) => {
     if (!id) return;
     const realId = id.toString();
-    setState(prev => prev.map(item => (item._id === realId || item.id === realId) ? { ...item, ...data } : item));
+    setState(prev => {
+      const next = prev.map(item => (item._id === realId || item.id === realId) ? { ...item, ...data } : item);
+      if (storageKey) saveData(storageKey, next);
+      return next;
+    });
 
-    if (realId.startsWith('temp_')) return;
+    if (isDemoToken(token) || realId.startsWith('temp_') || realId.startsWith('item_')) {
+      return;
+    }
 
     const sendUpdate = async (payload) => {
       try {
         const res = await apiFetch(`${endpoint}/${realId}`, { method: 'PUT', body: JSON.stringify(payload) });
         if (res.data) {
           const updated = normalizeDoc(res.data);
-          setState(prev => prev.map(item => (item._id === realId || item.id === realId) ? updated : item));
+          setState(prev => {
+            const next = prev.map(item => (item._id === realId || item.id === realId) ? updated : item);
+            if (storageKey) saveData(storageKey, next);
+            return next;
+          });
           showToast('Updated in MongoDB');
         }
       } catch (e) {
+        if (e.status === 405 || e.status === 503) return;
         console.error(e);
       }
     };
@@ -276,32 +436,49 @@ export function StudyProvider({ children }) {
     }
   };
 
-  const optimisticDelete = (endpoint, setState) => async (id) => {
+  const optimisticDelete = (endpoint, setState, storageKey) => async (id) => {
     if (!id) return;
     const realId = id.toString();
-    setState(prev => prev.filter(item => item._id !== realId && item.id !== realId));
-    if (realId.startsWith('temp_')) return;
+    setState(prev => {
+      const next = prev.filter(item => item._id !== realId && item.id !== realId);
+      if (storageKey) saveData(storageKey, next);
+      return next;
+    });
+
+    if (isDemoToken(token) || realId.startsWith('temp_') || realId.startsWith('item_')) {
+      showToast('Deleted locally');
+      return;
+    }
+
     try {
       await apiFetch(`${endpoint}/${realId}`, { method: 'DELETE' });
       showToast('Deleted from MongoDB');
     } catch (e) {
+      if (e.status === 405 || e.status === 503) {
+        showToast('Deleted locally');
+        return;
+      }
       console.error(e);
     }
   };
 
   // ===== Subjects CRUD =====
-  const addSubject = optimisticAdd('/subjects', setSubjects);
-  const updateSubject = optimisticUpdate('/subjects', setSubjects);
+  const addSubject = optimisticAdd('/subjects', setSubjects, null, 'subjects');
+  const updateSubject = optimisticUpdate('/subjects', setSubjects, { storageKey: 'subjects' });
   const deleteSubject = (id) => {
-    optimisticDelete('/subjects', setSubjects)(id);
+    optimisticDelete('/subjects', setSubjects, 'subjects')(id);
     const realId = id?.toString();
-    setTasks(prev => prev.filter(t => t.subjectId !== realId));
+    setTasks(prev => {
+      const next = prev.filter(t => t.subjectId !== realId);
+      saveData('tasks', next);
+      return next;
+    });
   };
 
   // ===== Tasks CRUD =====
-  const addTask = optimisticAdd('/tasks', setTasks);
-  const updateTask = optimisticUpdate('/tasks', setTasks);
-  const deleteTask = optimisticDelete('/tasks', setTasks);
+  const addTask = optimisticAdd('/tasks', setTasks, null, 'tasks');
+  const updateTask = optimisticUpdate('/tasks', setTasks, { storageKey: 'tasks' });
+  const deleteTask = optimisticDelete('/tasks', setTasks, 'tasks');
   const toggleTaskComplete = async (id) => {
     const realId = id?.toString();
     const task = tasks.find(t => t._id === realId || t.id === realId);
@@ -310,43 +487,62 @@ export function StudyProvider({ children }) {
 
   // ===== Schedule CRUD =====
   const sortSchedule = (list) => [...list].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  const addScheduleItem = optimisticAdd('/schedules', setSchedule, sortSchedule);
-  const updateScheduleItem = optimisticUpdate('/schedules', setSchedule);
-  const deleteScheduleItem = optimisticDelete('/schedules', setSchedule);
+  const addScheduleItem = optimisticAdd('/schedules', setSchedule, sortSchedule, 'schedule');
+  const updateScheduleItem = optimisticUpdate('/schedules', setSchedule, { storageKey: 'schedule' });
+  const deleteScheduleItem = optimisticDelete('/schedules', setSchedule, 'schedule');
 
   // ===== Goals CRUD =====
-  const addGoal = optimisticAdd('/goals', setGoals);
-  const updateGoal = optimisticUpdate('/goals', setGoals, { debounceMs: 150 });
-  const deleteGoal = optimisticDelete('/goals', setGoals);
+  const addGoal = optimisticAdd('/goals', setGoals, null, 'goals');
+  const updateGoal = optimisticUpdate('/goals', setGoals, { debounceMs: 150, storageKey: 'goals' });
+  const deleteGoal = optimisticDelete('/goals', setGoals, 'goals');
 
   // ===== Notes CRUD =====
   const addNote = async (data) => {
-    const tempId = uid('temp');
+    const tempId = uid('note');
     const localDate = new Date().toISOString().slice(0, 10);
-    setNotes(prev => [{ _id: tempId, id: tempId, updatedAt: localDate, ...data }, ...prev]);
+    const newNote = { _id: tempId, id: tempId, updatedAt: localDate, ...data };
+    setNotes(prev => {
+      const next = [newNote, ...prev];
+      saveData('notes', next);
+      return next;
+    });
+
+    if (isDemoToken(token)) {
+      showToast('Saved note locally');
+      return newNote;
+    }
+
     try {
       const res = await apiFetch('/notes', { method: 'POST', body: JSON.stringify(data) });
       const created = normalizeDoc(res.data);
-      setNotes(prev => prev.map(item => (item._id === tempId || item.id === tempId) ? created : item));
+      setNotes(prev => {
+        const next = prev.map(item => (item._id === tempId || item.id === tempId) ? created : item);
+        saveData('notes', next);
+        return next;
+      });
       showToast('Saved to MongoDB');
       return created;
     } catch (e) {
+      if (e.status === 405 || e.status === 503) {
+        showToast('Saved note locally (Offline)');
+        return newNote;
+      }
       setNotes(prev => prev.filter(item => item._id !== tempId && item.id !== tempId));
       console.error(e);
     }
   };
-  const updateNote = optimisticUpdate('/notes', setNotes);
-  const deleteNote = optimisticDelete('/notes', setNotes);
+  const updateNote = optimisticUpdate('/notes', setNotes, { storageKey: 'notes' });
+  const deleteNote = optimisticDelete('/notes', setNotes, 'notes');
 
   // ===== Exams CRUD =====
-  const addExam = optimisticAdd('/exams', setExams);
-  const updateExam = optimisticUpdate('/exams', setExams);
-  const deleteExam = optimisticDelete('/exams', setExams);
+  const addExam = optimisticAdd('/exams', setExams, null, 'exams');
+  const updateExam = optimisticUpdate('/exams', setExams, { storageKey: 'exams' });
+  const deleteExam = optimisticDelete('/exams', setExams, 'exams');
 
   // ===== Assignments CRUD =====
-  const addAssignment = optimisticAdd('/assignments', setAssignments);
-  const updateAssignment = optimisticUpdate('/assignments', setAssignments);
-  const deleteAssignment = optimisticDelete('/assignments', setAssignments);
+  const addAssignment = optimisticAdd('/assignments', setAssignments, null, 'assignments');
+  const updateAssignment = optimisticUpdate('/assignments', setAssignments, { storageKey: 'assignments' });
+  const deleteAssignment = optimisticDelete('/assignments', setAssignments, 'assignments');
 
   // ===== Pomodoro =====
   const logPomodoroSession = useCallback(async (minutes, subjectId) => {
@@ -357,21 +553,19 @@ export function StudyProvider({ children }) {
       sessionLog: [...(pomodoroStats.sessionLog || []), { date: todayStr, minutes }].slice(-200),
       ...(subjectId ? { subjectId, sessionMinutes: minutes } : {}),
     };
-    setPomodoroStats(prev => ({ ...prev, ...nextStatsPayload }));
+    setPomodoroStats(prev => {
+      const next = { ...prev, ...nextStatsPayload };
+      saveData('pomodoroStats', next);
+      return next;
+    });
 
     if (subjectId) {
       const addHours = Number((minutes / 60).toFixed(2));
-      setSubjects(prev => prev.map(s => s.id === subjectId ? { ...s, loggedHours: Number(((s.loggedHours || 0) + addHours).toFixed(2)) } : s));
-    }
-
-    try {
-      const res = await apiFetch('/pomodorostats', {
-        method: 'POST',
-        body: JSON.stringify(nextStatsPayload),
+      setSubjects(prev => {
+        const next = prev.map(s => s.id === subjectId ? { ...s, loggedHours: Number(((s.loggedHours || 0) + addHours).toFixed(2)) } : s);
+        saveData('subjects', next);
+        return next;
       });
-      if (res.data) setPomodoroStats(normalizeDoc(res.data));
-    } catch (e) {
-      console.error(e);
     }
 
     let newCurrent = streak.current || 0;
@@ -389,7 +583,23 @@ export function StudyProvider({ children }) {
       longest: Math.max(streak.longest || 0, newCurrent),
       lastStudyDate: todayStr,
     };
-    setStreak(prev => ({ ...prev, ...nextStreakPayload }));
+    setStreak(prev => {
+      const next = { ...prev, ...nextStreakPayload };
+      saveData('streak', next);
+      return next;
+    });
+
+    if (isDemoToken(token)) return;
+
+    try {
+      const res = await apiFetch('/pomodorostats', {
+        method: 'POST',
+        body: JSON.stringify(nextStatsPayload),
+      });
+      if (res.data) setPomodoroStats(normalizeDoc(res.data));
+    } catch (e) {
+      console.error(e);
+    }
 
     try {
       const res = await apiFetch('/streaks', {
@@ -400,15 +610,25 @@ export function StudyProvider({ children }) {
     } catch (e) {
       console.error(e);
     }
-  }, [pomodoroStats, streak]);
+  }, [pomodoroStats, streak, token]);
 
   const seedSampleData = async () => {
+    if (isDemoToken(token)) {
+      populateFromLocalStorage();
+      showToast('Populated study data in Local Storage');
+      return;
+    }
     try {
       const res = await apiFetch('/auth/seed-sample-data', { method: 'POST' });
       await refreshAllData();
       showToast('Populated full B.Tech CSE study database in MongoDB');
       return res;
     } catch (e) {
+      if (e.status === 405 || e.status === 503) {
+        populateFromLocalStorage();
+        showToast('Populated study data in Local Storage');
+        return;
+      }
       console.error('Failed to seed sample data', e);
       throw e;
     }
@@ -416,6 +636,7 @@ export function StudyProvider({ children }) {
 
   const value = {
     user, register, login, logout, updateProfile, forgotPassword, resetPassword,
+    token, isDemoMode: isDemoToken(token),
     darkMode, setDarkMode,
     sidebarOpen, setSidebarOpen,
     notifications, markNotifRead,

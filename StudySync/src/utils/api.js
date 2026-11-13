@@ -87,8 +87,19 @@ export const apiFetch = async (endpoint, options = {}, _retried = false) => {
   const data = await parseResponse(response);
 
   if (!response.ok) {
-    const err = new Error(data.message || 'Something went wrong');
+    let msg = data.message;
+    if (typeof msg === 'string' && (msg.includes('<html') || msg.includes('<!DOCTYPE') || msg.includes('<body') || msg.includes('Method Not Allowed'))) {
+      if (response.status === 405) {
+        msg = 'Backend API is not available on this cloud domain (405 Method Not Allowed).';
+      } else if (response.status === 404) {
+        msg = `API route not found: ${endpoint} (404)`;
+      } else {
+        msg = `Server returned HTTP ${response.status}`;
+      }
+    }
+    const err = new Error(msg || 'Something went wrong');
     err.status = response.status;
+    err.data = data;
     throw err;
   }
 
